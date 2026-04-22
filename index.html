@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Font Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .loader { border-top-color: #111827; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen p-4 md:p-8">
+
+    <header class="max-w-5xl mx-auto mb-10 flex flex-col items-center">
+        <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-200 mb-4">
+            <svg class="w-8 h-8 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path>
+            </svg>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-gray-900 mb-2">Website Font Checker</h1>
+        <p class="text-gray-500 mb-6 text-center max-w-lg">Crawl websites and extract typography design tokens.</p>
+        
+        <form id="analyzeForm" class="flex w-full max-w-2xl shadow-sm rounded-xl overflow-hidden border border-gray-300 bg-white focus-within:ring-2 focus-within:ring-gray-800 focus-within:border-gray-800 transition-all">
+            <input type="text" id="urlInput" required class="flex-1 px-5 py-3 outline-none text-gray-700 placeholder-gray-400 bg-transparent" placeholder="e.g., apple.com or contrario.ai" />
+            <button type="submit" id="submitBtn" class="px-6 py-3 bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors flex items-center gap-2">
+                <span>Crawl Site</span>
+            </button>
+        </form>
+        
+        <div id="loadingIndicator" class="hidden mt-8 flex flex-col items-center gap-3">
+            <div class="loader ease-linear rounded-full border-4 border-gray-200 h-10 w-10"></div>
+            <p class="text-sm text-gray-500 font-medium">Booting headless browser and analyzing pages...</p>
+        </div>
+        
+        <div id="errorMessage" class="hidden mt-6 text-red-600 bg-red-50 px-4 py-2 rounded-lg text-sm border border-red-200"></div>
+    </header>
+
+    <main id="resultsContainer" class="max-w-5xl mx-auto space-y-12"></main>
+
+    <script>
+        document.getElementById('analyzeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const urlInput = document.getElementById('urlInput').value;
+            const submitBtn = document.getElementById('submitBtn');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const resultsContainer = document.getElementById('resultsContainer');
+            const errorMessage = document.getElementById('errorMessage');
+
+            // Reset UI for new search
+            resultsContainer.innerHTML = '';
+            errorMessage.classList.add('hidden');
+            loadingIndicator.classList.remove('hidden');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-70');
+
+            try {
+                // Call local Node.js server
+                const response = await fetch(`http://localhost:3000/api/analyze?url=${encodeURIComponent(urlInput)}`);
+                const data = await response.json();
+
+                if (!response.ok) throw new Error(data.error || 'Failed to fetch');
+                
+                if (data.pages.length === 0) throw new Error('Could not extract any typography data. The site might be blocking bots.');
+
+                let finalHtml = '';
+
+                // Iterate through each page found by the crawler
+                data.pages.forEach((pageData, index) => {
+                    let pageHtml = `
+                        <section class="mb-12">
+                            <div class="flex items-center gap-3 mb-6 pb-2 border-b border-gray-200">
+                                <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-gray-200 text-gray-700 font-bold text-sm">${index + 1}</span>
+                                <h2 class="text-xl font-semibold text-gray-800 flex-1 truncate">
+                                    Target: <a href="${pageData.page}" target="_blank" class="text-gray-900 hover:underline decoration-gray-400 underline-offset-4">${pageData.page}</a>
+                                </h2>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    `;
+
+                    // Render a card for each font element found on that page
+                    pageData.fonts.forEach(font => {
+                        pageHtml += `
+                            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow duration-200">
+                                <div class="flex items-center justify-between mb-4">
+                                    <span class="px-3 py-1 text-xs font-bold bg-gray-100 text-gray-800 rounded-md uppercase tracking-wider">${font.label}</span>
+                                    <div class="w-5 h-5 rounded-full border border-gray-200 shadow-inner" style="background-color: ${font.color};" title="Color: ${font.color}"></div>
+                                </div>
+                                <ul class="space-y-3 text-sm">
+                                    <li class="flex justify-between items-center border-b border-gray-50 pb-2">
+                                        <span class="font-medium text-gray-400">Family</span> 
+                                        <span class="text-gray-900 font-medium text-right max-w-[60%] truncate" title="${font.family}">${font.family.split(',')[0]}</span>
+                                    </li>
+                                    <li class="flex justify-between items-center border-b border-gray-50 pb-2">
+                                        <span class="font-medium text-gray-400">Size</span> 
+                                        <span class="text-gray-900">${font.size}</span>
+                                    </li>
+                                    <li class="flex justify-between items-center border-b border-gray-50 pb-2">
+                                        <span class="font-medium text-gray-400">Weight</span> 
+                                        <span class="text-gray-900">${font.weight}</span>
+                                    </li>
+                                    <li class="flex justify-between items-center border-b border-gray-50 pb-2">
+                                        <span class="font-medium text-gray-400">Line Height</span> 
+                                        <span class="text-gray-900">${font.lineHeight}</span>
+                                    </li>
+                                    <li class="flex justify-between items-center">
+                                        <span class="font-medium text-gray-400">Color</span> 
+                                        <span class="text-gray-900 font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">${font.color}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        `;
+                    });
+
+                    pageHtml += `</div></section>`;
+                    finalHtml += pageHtml;
+                });
+
+                resultsContainer.innerHTML = finalHtml;
+
+            } catch (error) {
+                errorMessage.textContent = error.message;
+                errorMessage.classList.remove('hidden');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-70');
+            }
+        });
+    </script>
+</body>
+</html>
